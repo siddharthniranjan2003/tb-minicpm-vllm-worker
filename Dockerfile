@@ -12,6 +12,7 @@
 FROM vllm/vllm-openai:v0.10.2
 
 RUN pip install --no-cache-dir runpod requests
+RUN python3 -c "from huggingface_hub import snapshot_download; snapshot_download('openbmb/MiniCPM-V-4_5')"
 
 WORKDIR /app
 COPY handler.py /app/handler.py
