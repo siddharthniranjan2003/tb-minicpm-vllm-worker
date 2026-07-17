@@ -9,10 +9,27 @@
 # Bases on the official vLLM OpenAI image so the vLLM version is guaranteed, then
 # adds the same small RunPod handler that proxies jobs to the in-container vLLM
 # OpenAI server on 127.0.0.1:8000.
-FROM vllm/vllm-openai:v0.10.2
+#
+# Pinned to v0.25.1 (not v0.10.2): RunPod started scheduling this account's
+# workers onto Blackwell-generation GPUs (SM120, e.g. "RTX PRO 6000 Blackwell").
+# v0.10.2's bundled PyTorch/vLLM CUDA kernels predate Blackwell and crash with
+# "no kernel image is available for execution on the device" on that hardware
+# (RunPod then silently retries forever, which looks like an endless
+# "initializing" hang from the outside). v0.25.1 is a much later release built
+# against a newer CUDA toolkit with Blackwell kernels included, while still
+# satisfying the >= 0.10.2 requirement above.
+FROM vllm/vllm-openai:v0.25.1
 
 RUN pip install --no-cache-dir runpod requests
 RUN python3 -c "from huggingface_hub import snapshot_download; snapshot_download('openbmb/MiniCPM-V-4_5')"
+
+# Model + remote code are already baked into the image above. Without these,
+# vLLM's --trust-remote-code path still calls out to the Hub on every worker
+# boot to check for updated remote-code files; if that call hangs (HF
+# unreachable/slow from the host), the worker sits in "initializing" forever
+# with no crash and no unhealthy signal. Offline mode forces the local cache.
+ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
 
 WORKDIR /app
 COPY handler.py /app/handler.py
